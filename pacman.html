@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pac-Man</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    background:#0a0a1a;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+    font-family:'Courier New',monospace;
+    overflow:hidden;
+}
+.game-wrapper{
+    background:#111122;
+    border-radius:20px;
+    padding:30px 40px;
+    box-shadow:0 0 60px rgba(255,255,0,0.1),0 0 120px rgba(255,255,0,0.05),inset 0 0 60px rgba(0,0,255,0.05);
+    border:1px solid rgba(255,255,255,0.05);
+}
+.header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:0 5px 20px 5px;
+    color:#fff;
+    font-size:18px;
+    font-weight:bold;
+}
+.header .score{color:#ffde00}
+.header .lives{color:#ff4444}
+.header .high{color:#88ff88}
+canvas{
+    display:block;
+    border-radius:8px;
+    background:#000;
+    box-shadow:0 0 40px rgba(255,255,0,0.15),inset 0 0 40px rgba(0,0,0,0.5);
+}
+.controls{
+    display:flex;
+    justify-content:center;
+    gap:12px;
+    margin-top:20px;
+}
+.btn{
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.1);
+    color:#aaa;
+    padding:8px 24px;
+    border-radius:8px;
+    font-family:inherit;
+    font-size:14px;
+    cursor:pointer;
+    transition:all .2s;
+}
+.btn:hover{background:rgba(255,255,0,0.1);color:#ffde00;border-color:rgba(255,255,0,0.3)}
+.status{
+    color:#ffde00;
+    font-size:16px;
+    text-align:center;
+    margin-top:12px;
+    min-height:24px;
+    letter-spacing:2px;
+    text-shadow:0 0 20px rgba(255,255,0,0.3);
+}
+@media(max-width:600px){
+    .game-wrapper{padding:15px;border-radius:12px}
+    .header{font-size:14px;padding:0 2px 12px 2px}
+    .btn{padding:6px 16px;font-size:12px}
+}
+</style>
+</head>
+<body>
+<div class="game-wrapper">
+    <div class="header">
+        <span class="score">SCORE: <span id="scoreDisplay">0</span></span>
+        <span class="high">HIGH: <span id="highDisplay">0</span></span>
+        <span class="lives" id="livesDisplay"></span>
+    </div>
+    <canvas id="gameCanvas" width="560" height="620"></canvas>
+    <div class="status" id="statusDisplay">PRESS SPACE OR CLICK START</div>
+    <div class="controls">
+        <button class="btn" id="startBtn">START</button>
+    </div>
+</div>
+<script>
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+const scoreSpan=document.getElementById('scoreDisplay');
+const highSpan=document.getElementById('highDisplay');
+const livesSpan=document.getElementById('livesDisplay');
+const statusDiv=document.getElementById('statusDisplay');
+const COLS=28,ROWS=31,TS=20;
+const T={WALL:0,EMPTY:1,DOT:2,POWER:3,GHOST:4,DOOR:5};
+
+const MZ=[
+"WWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+"W............WW............W",
+"W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+"WoWWWW.WWWWW.WW.WWWWW.WWWWoW",
+"W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+"W............WW............W",
+"WWWWWW.WWWWWWWWWWWWWW.WWWWWW",
+"WWWWWW.WWWWWWWWWWWWWW.WWWWWW",
+"WWWWWW.WWWWWWWWWWWWWW.WWWWWW",
+".......WW....WW....WW.......",
+"WWWWWWW.WWWW.WW.WWWW.WWWWWWW",
+"WWWWWWW.WWWW.WW.WWWW.WWWWWWW",
+"WWWWWWW.WWWW.WW.WWWW.WWWWWWW",
+".......WW....WW....WW.......",
+"WWWWWW.WWWW--WW--WWWW.WWWWWW",
+"WWWWWWW.WWWWHHHHWWWW.WWWWWWW",
+"WWWWWWW.WWWWHHHHWWWW.WWWWWWW",
+".......WW....WW....WW.......",
+"WWWWWW.WWWWWWWWWWWWWW.WWWWWW",
+"WWWWWW.WWWWWWWWWWWWWW.WWWWWW",
+"WWWWWW.WWWWWWWWWWWWWW.WWWWWW",
+"W............WW............W",
+"W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+"W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+"Wo..WW............WW..oW...W",
+"W.WWWW.WWWW.WWWW.WWWW.WWWW.W",
+"W.WWWW.WWWW.WWWW.WWWW.WWWW.W",
+"W....WW....WW....WW....WWW.W",
+"WWWW.WWWWWWWWWWWWWWWWWWWWWWW",
+"W..........................W",
+"WWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+];
+
+const TROWS=[9,13,17];
+let maze=[],dots=0,eaten=0,sc=0;
+let hi=parseInt(localStorage.getItem('pmh'))||0;
+let lives=3,state='idle',af=null,ft=0,fright=0;
+
+const GC=['#ff0000','#ffb8ff','#00ffff','#ffb852'];
+const GN=['blinky','pinky','inky','clyde'];
+
+function parse(){
+maze=[];dots=0;eaten=0;
+for(let r=0;r<ROWS;r++){maze[r]=[];
+for(let c=0;c<COLS;c++){
+const ch=MZ[r][c];
+if(ch==='W')maze[r][c]=T.WALL;
+else if(ch==='.'){maze[r][c]=T.DOT;dots++;}
+else if(ch==='o'){maze[r][c]=T.POWER;dots++;}
+else if(ch==='H')maze[r][c]=T.GHOST;
+else if(ch==='-')maze[r][c]=T.DOOR;
+else maze[r][c]=T.EMPTY;
+}}
+for(let r of TROWS){maze[r][0]=T.EMPTY;maze[r][COLS-1]=T.EMPTY;}
+}
+
+function ok(r,c){
+if(TROWS.includes(r)){if(c<0)c=COLS-1;if(c>=COLS)c=0;}
+return c>=0&&c<COLS&&r>=0&&r<ROWS&&maze[r][c]!==T.WALL;
+}
+
+function wr(r,c){
+if(TROWS.includes(r)){
+if(c<0)c=COLS-1;else if(c>=COLS)c=0;
+}
+return{r,c};
+}
+
+function drawMaze(){
+for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+const x=c*TS,y=r*TS,t=maze[r][c];
+if(t===T.WALL){
+ctx.fillStyle='#2121de';
+ctx.fillRect(x,y,TS,TS);
+ctx.fillStyle='#4242ff';
+ctx.fillRect(x+2,y+2,TS-4,TS-4);
+}else if(t===T.DOT){
+ctx.fillStyle='#ffb8ae';
+ctx.beginPath();
+ctx.arc(x+TS/2,y+TS/2,2.5,0,Math.PI*2);
+ctx.fill();
+}else if(t===T.POWER){
+ctx.fillStyle='#ffb8ae';
+ctx.beginPath();
+ctx.arc(x+TS/2,y+TS/2,7,0,Math.PI*2);
+ctx.fill();
+ctx.fillStyle='rgba(255,184,174,0.2)';
+ctx.beginPath();
+ctx.arc(x+TS/2,y+TS/2,10,0,Math.PI*2);
+ctx.fill();
+}else if(t===T.GHOST){
+ctx.fillStyle='#1a1a3a';
+ctx.fillRect(x,y,TS,TS);
+ctx.strokeStyle='#333';
+ctx.lineWidth=0.5;
+ctx.strokeRect(x,y,TS,TS);
+}else if(t===T.DOOR){
+ctx.fillStyle='#ffb8ff';
+ctx.fillRect(x+1,y+TS/2-1,TS-2,3);
+}}
+for(let r of TROWS){
+ctx.fillStyle='#000';
+ctx.fillRect(0,r*TS,TS,TS);
+ctx.fillRect((COLS-1)*TS,r*TS,TS,TS);
+}}
+
+const pac={
+r:23,c:6,dr:-1,dc:0,ndr:-1,ndc:0,
+mouth:0,mdir:1,px:0,py:0,speed:150,
+reset(){
+this.r=23;this.c=6;
+this.dr=-1;this.dc=0;
+this.ndr=-1;this.ndc=0;
+this.mouth=0;this.mdir=1;
+this.px=this.c*TS+TS/2;
+this.py=this.r*TS+TS/2;
+},
+setDir(dr,dc){
+this.ndr=dr;this.ndc=dc;
+if(dr===-this.dr&&dc===-this.dc)return;
+const next=wr(this.r+dr,this.c+dc);
+if(ok(next.r,next.c)){this.dr=dr;this.dc=dc;}
+},
+update(dt){
+if(!this.dr&&!this.dc)return;
+let tr=this.r+this.dr,tc=this.c+this.dc;
+if(TROWS.includes(this.r)&&(tc<0||tc>=COLS)){
+this.px=tc<0?COLS*TS+this.px:-COLS*TS+this.px;
+this.c=tc<0?COLS-1:0;
+tc=this.c+this.dc;
+}
+const target=wr(tr,tc);
+const tx=target.c*TS+TS/2,ty=target.r*TS+TS/2;
+const dx=tx-this.px,dy=ty-this.py;
+const dist=Math.hypot(dx,dy);
+const step=this.speed*dt;
+if(step>=dist){
+this.px=tx;this.py=ty;
+this.r=target.r;this.c=target.c;
+const tile=maze[this.r][this.c];
+if(tile===T.DOT){maze[this.r][this.c]=T.EMPTY;eaten++;sc+=10;ui();}
+else if(tile===T.POWER){maze[this.r][this.c]=T.EMPTY;eaten++;sc+=50;ui();fright=400;}
+const next=wr(this.r+this.ndr,this.c+this.ndc);
+if(ok(next.r,next.c)){this.dr=this.ndr;this.dc=this.ndc;}
+else{
+const cur=wr(this.r+this.dr,this.c+this.dc);
+if(!ok(cur.r,cur.c)){this.dr=0;this.dc=0;}
+}
+}else if(dist>0){
+this.px+=dx/dist*step;
+this.py+=dy/dist*step;
+}
+this.mouth+=this.mdir*0.15;
+if(this.mouth>1||this.mouth<0)this.mdir*=-1;
+},
+draw(){
+ctx.save();
+ctx.translate(this.px,this.py);
+let ang=0;
+if(this.dr===-1)ang=-Math.PI/2;
+else if(this.dr===1)ang=Math.PI/2;
+else if(this.dc===1)ang=0;
+else if(this.dc===-1)ang=Math.PI;
+ctx.rotate(ang);
+const r=TS*0.45;
+const ma=0.2+this.mouth*0.2;
+ctx.fillStyle='#ffde00';
+ctx.beginPath();
+ctx.moveTo(0,0);
+ctx.arc(0,0,r,ma,Math.PI*2-ma);
+ctx.closePath();
+ctx.fill();
+ctx.fillStyle='#000';
+ctx.beginPath();
+ctx.arc(r*0.3,-r*0.3,1.5,0,Math.PI*2);
+ctx.fill();
+ctx.restore();
+}
+};
+
+const ghosts=[];
+for(let i=0;i<4;i++){
+const g={
+idx:i,col:GC[i],name:GN[i],inHouse:false,
+r:0,c:0,dr:0,dc:0,px:0,py:0,speed:130,
+reset(){
+const starts=[[11,12],[13,9],[13,22],[9,21]];
+const s=starts[this.idx];
+this.r=s[0];this.c=s[1];
+this.dr=0;this.dc=1;
+this.px=this.c*TS+TS/2;
+this.py=this.r*TS+TS/2;
+this.speed=130;
+},
+getTarget(){
+if(fright>0)return{r:14,c:COLS/2};
+return this.idx===0?{r:pac.r,c:pac.c}
+:this.idx===1?{r:pac.r+2*pac.dr,c:pac.c+2*pac.dc}
+:this.idx===2?(()=>{const pr=pac.r+2*pac.dr,pc=pac.c+2*pac.dc;return{r:pr+(pr-ghosts[0].r),c:pc+(pc-ghosts[0].c)}})()
+:Math.hypot(this.r-pac.r,this.c-pac.c)>8?{r:pac.r,c:pac.c}:{r:27,c:0};
+},
+pickDir(){
+if(this.inHouse)return;
+const target=this.getTarget();
+const dirs=[{dr:0,dc:1},{dr:0,dc:-1},{dr:-1,dc:0},{dr:1,dc:0}];
+let best=null,bestD=Infinity;
+for(const d of dirs){
+if(d.dr===-this.dr&&d.dc===-this.dc)continue;
+const nr=this.r+d.dr,nc=this.c+d.dc;
+if(!ok(nr,nc))continue;
+const dist=Math.hypot(nr-target.r,nc-target.c);
+if(dist<bestD){bestD=dist;best=d;}
+}
+if(best){this.dr=best.dr;this.dc=best.dc;}
+},
+update(dt){
+if(this.inHouse)return;
+let tr=this.r+this.dr,tc=this.c+this.dc;
+if(TROWS.includes(this.r)&&(tc<0||tc>=COLS)){
+this.px=tc<0?COLS*TS+this.px:-COLS*TS+this.px;
+this.c=tc<0?COLS-1:0;
+tc=this.c+this.dc;
+}
+const target=wr(tr,tc);
+const tx=target.c*TS+TS/2,ty=target.r*TS+TS/2;
+const dx=tx-this.px,dy=ty-this.py;
+const dist=Math.hypot(dx,dy);
+const spd=fright>0?80:130;
+const step=spd*dt;
+if(step>=dist){
+this.px=tx;this.py=ty;
+this.r=target.r;this.c=target.c;
+this.pickDir();
+}else if(dist>0){
+this.px+=dx/dist*step;
+this.py+=dy/dist*step;
+}
+},
+draw(){
+const x=this.px,y=this.py;
+ctx.save();
+ctx.translate(x,y);
+if(fright>0){
+const flash=Math.floor(fright/12)%2===0;
+ctx.fillStyle=flash?'#fff':'#2121ff';
+}else ctx.fillStyle=this.col;
+const r=TS*0.4;
+ctx.beginPath();
+ctx.arc(0,-r*0.15,r,Math.PI,0);
+ctx.lineTo(r,TS*0.35);
+ctx.quadraticCurveTo(r*0.7,TS*0.4,r*0.3,TS*0.25);
+ctx.quadraticCurveTo(0,TS*0.4,-r*0.3,TS*0.25);
+ctx.quadraticCurveTo(-r*0.7,TS*0.4,-r,TS*0.35);
+ctx.closePath();
+ctx.fill();
+const eyeR=r*0.22;
+ctx.fillStyle='#fff';
+ctx.beginPath();ctx.arc(-r*0.33,-r*0.05,eyeR,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(r*0.33,-r*0.05,eyeR,0,Math.PI*2);ctx.fill();
+const pupilR=r*0.12;
+ctx.fillStyle='#222';
+ctx.beginPath();ctx.arc(-r*0.33+this.dc*r*0.08,-r*0.05+this.dr*r*0.08,pupilR,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(r*0.33+this.dc*r*0.08,-r*0.05+this.dr*r*0.08,pupilR,0,Math.PI*2);ctx.fill();
+ctx.restore();
+}
+};
+g.reset=g.reset.bind(g);
+g.getTarget=g.getTarget.bind(g);
+g.pickDir=g.pickDir.bind(g);
+g.update=g.update.bind(g);
+g.draw=g.draw.bind(g);
+ghosts.push(g);
+}
+
+function checkCollision(){
+for(const g of ghosts){
+if(g.inHouse)continue;
+const d=Math.hypot(pac.px-g.px,pac.py-g.py);
+if(d<TS*0.7){
+if(fright>0){
+g.reset();
+sc+=200;ui();
+}else{
+lives--;ui();
+if(lives<=0){state='over';statusDiv.textContent='GAME OVER';}
+else{resetPositions();statusDiv.textContent='GET READY...';setTimeout(()=>{if(state==='play')statusDiv.textContent='';},1000);}
+}
+}
+}
+}
+function resetPositions(){
+pac.reset();
+for(const g of ghosts)g.reset();
+fright=0;
+}
+function startGame(){
+if(state==='play')return;
+parse();sc=0;eaten=0;lives=3;fright=0;state='play';
+resetPositions();statusDiv.textContent='';ui();
+}
+function ui(){
+scoreSpan.textContent=sc;
+highSpan.textContent=hi;
+  livesSpan.textContent='LIVES: '+'\u2665'.repeat(Math.max(0,lives));
+if(sc>hi){hi=sc;localStorage.setItem('pmh',hi);highSpan.textContent=hi;}
+}
+let last=0;
+function loop(t){
+if(!last)last=t;
+const dt=Math.min((t-last)/1000,0.05);
+last=t;
+ctx.fillStyle='#000';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+drawMaze();
+if(state==='play'){
+pac.update(dt);
+for(const g of ghosts)g.update(dt);
+checkCollision();
+if(fright>0)fright--;
+if(eaten>=dots){state='win';statusDiv.textContent='YOU WIN!';}
+}
+pac.draw();
+for(const g of ghosts)g.draw();
+af=requestAnimationFrame(loop);
+}
+document.addEventListener('keydown',e=>{
+if(e.key===' '){e.preventDefault();startGame();}
+if(state!=='play')return;
+switch(e.key){
+case'ArrowUp':pac.setDir(-1,0);break;
+case'ArrowDown':pac.setDir(1,0);break;
+case'ArrowLeft':pac.setDir(0,-1);break;
+case'ArrowRight':pac.setDir(0,1);break;
+}
+});
+document.addEventListener('keyup',e=>{
+if(e.key.startsWith('Arrow'))e.preventDefault();
+});
+document.getElementById('startBtn').addEventListener('click',startGame);
+parse();resetPositions();ui();af=requestAnimationFrame(loop);
+</script>
+</body>
+</html>
